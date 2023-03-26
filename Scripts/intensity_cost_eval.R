@@ -12,7 +12,7 @@ library(igraph)
 library(stars)
 library(terra)
 
-
+######Load in patch configurations
 SL<-st_read("Data/slHomog.shp")
 SS<-st_read("Data/ssHomog.shp")
 mixed<-st_read("Data/mixedHomog.shp")
