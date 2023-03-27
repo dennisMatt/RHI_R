@@ -163,29 +163,18 @@ rhiConnect<-function(patches,specialism,edge,edgeIntensity,maxDist,costRaster,di
 
 
 
-testConnect<-rhiConnect(patches=SL,specialism="interior",edge=100,edgeIntensity =0.05,maxDist = 2500,dispersalRate=0.05,edgeSensitivity = 0.5)
-
-
-testConnect
-
-edgeList<-list()
-
-intVec<-seq(0.05,1,by=0.05)
 
 
 
-intFun<-function(x){
-  
-  intRHI<-rhiConnect(patches = SL,specialism = "edge",edge = 100,edgeIntensity = 0.5,maxDist = 500,dispersalRate = 0.05,edgeSensitivity = 1)
-  print(x)
-  
-  return(intRHI)
-  
-}
 
 
 
 ###################################################### Intensity evaluation function
+#set sequence of edgeIntensity values
+
+intVec<-c(0.01,seq(0.05,0.95,by=0.05),0.99)
+intVec
+#create function to take values for edgeIntensity and return RHI result
 intFun<-function(x,config,speciesGroup){
   
   intRHI<-rhiConnect(patches = config,specialism = speciesGroup,edge = 100,edgeIntensity = x,maxDist = 2600,dispersalRate = 0.05,edgeSensitivity = 1)
@@ -194,7 +183,10 @@ intFun<-function(x,config,speciesGroup){
   return(intRHI)
   
 }
+
+#####Run intFun function iterating over intVec values to model changes in RHI
 ##############################SL
+
 #Edge SL
 intEdgeSL<-lapply(intVec,intFun,config=SL,speciesGroup="edge")
 
