@@ -74,7 +74,9 @@ ss<-ss[,6:8]
 sl<-sl[,6:8]
 mixed<-mixed[,6:8]
 
-#set habitat polygons to 1 (or skip this step to set to 0)
+#set habitat polygons cost value to 1 (this is just to reproduce Fig. 4, we deal with habitat movement 
+#cost values inside the RHI function)
+
 for(i in 1:nrow(ss)){
 
   if(ss$Cost[i]==0){
@@ -96,6 +98,7 @@ for(i in 1:nrow(mixed)){
 }
 
 
+#########create plots for heterogeneous landscapes
 ggplot(sl) +
   geom_sf(aes(fill = Cost))+theme_pubr(base_size = 20,legend="right")+coord_sf(label_axes = "")
 
@@ -121,6 +124,7 @@ slMatrix<-sl[sl$Cost>1,]
 
 mixedMatrix<-mixed[mixed$Cost>1,]
 
+#set up the RHI function to reproduce analyses in Dennis et al. 2023
 
 #######
 #######This function has seven arguments - patches = habitat patches: shapefile 
@@ -131,6 +135,7 @@ mixedMatrix<-mixed[mixed$Cost>1,]
 #################################### maxDist = maximum dispersal distance of the species being modeled
 #####################################dispersalRate = component setting rate of dispersal success
 #####################################edgeSensitivity = sets how sensitive the species is to "specialism". Setting this to increasingly small values for either edge or interior moves the species further towards generalist
+###################################### fullEdgeEffectArea = sets the area above which edge source patches exert maximal (full) edge effect
 rhiConnectHet<-function(patches,matrix,specialism,edge,edgeIntensity,maxDist,
                      dispersalRate,edgeSensitivity,fullEdgeEffectArea){ 
   
@@ -246,7 +251,7 @@ rhiConnectHet<-function(patches,matrix,specialism,edge,edgeIntensity,maxDist,
     #   (i.e. remove a proportion of the area)
     edgeClump <- 1-(sumRast * edgeSensitivity)
     
-    # 
+    # extract raster values from within patches
     extClump <- extract(edgeClump, patches, fun=sum, method="simple", bind=T)
     
     # get cell area
@@ -261,7 +266,7 @@ rhiConnectHet<-function(patches,matrix,specialism,edge,edgeIntensity,maxDist,
     # for an edge specialist just leave as the edge habitat within the patch (i.e. inverse of above)
     edgeClump <- 1-(invEdge * edgeSensitivity)
     
-    # 
+    # extract raster values from within patches
     extClump <- extract(edgeClump, patches, fun=sum, method="simple", bind=T)
     
     # get cell area
@@ -285,21 +290,23 @@ rhiConnectHet<-function(patches,matrix,specialism,edge,edgeIntensity,maxDist,
   
   
   ###########################################Least Cost Path calculations##############################
-  #head(ssMatrix)
+  
   # convert matrix patches to cost raster (costs in col 2)
-  #head(matrix)
+  
   costRast<-st_rasterize(matrix[,2])
   
-  # gdistance takes raster package objects so convert 
+   
   costRast<-rast(costRast)
+  
+  #set habitat patches (NA in the data to 1)
   costRast[is.na(costRast)]<-1
-  #plot(costRast)
   
   
+  # gdistance takes raster package objects so convert 
   land_cost <- transition(raster(costRast), transitionFunction=function(x) 1 / mean(x), 8)
   
   # set destination points as centroids of the patches
-  # TODO: centroid might not always be inside the polygon - we need a representative point instead
+  
   sites <- SpatialPoints(st_coordinates(st_point_on_surface(patches)))
   
   # init cost matrix and loop through each row
@@ -308,7 +315,7 @@ rhiConnectHet<-function(patches,matrix,specialism,edge,edgeIntensity,maxDist,
   for (i in 1:n.patch) {
     c <- gdistance::costDistance(land_cost, sites[i], sites) 
     costMat[i,] <- c
-    # print(i / n.patch * 100)
+    
   }
   
   # this is a matrix of least cost distances between patches 
@@ -317,39 +324,20 @@ rhiConnectHet<-function(patches,matrix,specialism,edge,edgeIntensity,maxDist,
   #create basis for probability matrix
   distMat<-as.matrix(distMat, nrow=nrow(patches), nrow=nrow(patches)) 
   
-  # in case modelling on single patch then need if else to side step matrix error here
-  #if(nrow(distMat) > 1) { 
-  distMat <- apply(distMat, MARGIN=1, FUN=as.numeric) # annoyingly need to make sure all elements are numeric here
   
-  #} else {
-  #distMat <- distMat
-  #} 
+  
+  distMat <- apply(distMat, MARGIN=1, FUN=as.numeric) # make sure all elements are numeric here
   
   # set alpha which determines colonization probability of the species 
   alpha= -log(dispersalRate) / maxDist
   
-  # 
-  #if(nrow(distMat) == 1){
-  
-  # for single patches just set diagonal to 1
-  # A.prob <- matrix(1, nrow=nrow(distMat), ncol=ncol(distMat))
-  
-  # TODO:is this not already a matrix?
-  #A.prob <- as.matrix(A.prob)
-  
-  # store probabilities in adjacency table
-  #graph.Aprob <- graph.adjacency(A.prob, mode="undirected", weighted=T)
-  
-  #} else {
-  
-  # 
+  # init empty matrix for adjacency matrix 
   A.prob <- matrix(0, nrow=nrow(distMat), ncol=ncol(distMat))
   
   # negative exponential of colonization kernel x distance get probability
   A.prob <- exp(-alpha * distMat) 
   
   # set diag to zero
-  # TODO: but this is another parameter that could be tweaked?
   diag(A.prob) <- 0 
   
   # final matrix for connectivity graph
@@ -360,7 +348,7 @@ rhiConnectHet<-function(patches,matrix,specialism,edge,edgeIntensity,maxDist,
   #}
   
   
-  ## calculate landscape-scale connectivity
+  ## calculate RHI
   
   # calculate all shortest paths between nodes
   pstar.mat <- shortest.paths(graph.Aprob, weights= -log(E(graph.Aprob)$weight))
@@ -373,35 +361,32 @@ rhiConnectHet<-function(patches,matrix,specialism,edge,edgeIntensity,maxDist,
   # get study area in m2
   AL <- expanse(ext)
   
-  # get area vector for PC metric
+  # get area vector 
   area <- extClump$areaMod
   
   # sum areas from the vector
   areaSum <- sum(area)
   
   # get product of all patch areas ij and multiply by probabilities above
-  PCmatNew <- outer(area,area) * pstar.mat 
+  PCmat <- outer(area,area) * pstar.mat 
   
 
-  
-  pcMatSum <- sum(PCmatNew)
+  #sum above
+  pcMatSum <- sum(PCmat)
   
   # divide by total area of the study squared to get the PC metric  
   pcMod <- pcMatSum / as.numeric(AL^2) 
-  #pcMod <- sqrt(pcMatSum) / as.numeric(AL)
+  
+  
   # compile results into list and return
   return(list(areaSum, pcMatSum, pcMod))
   #print(x)
 }
 
 
-######################## Do some testing  
 
 
 ######################## Do some testing  
-
-# load data
-ssPatches
 
 #plot(mixedMatrix)
 
@@ -416,28 +401,7 @@ testConnect<-rhiConnect(
   fullEdgeEffectArea=10000
 )
 
-
-
-edgeEffectFun<-function(x){
-  testConnect<-castorConnect(
-    patches=ssPatches,
-    matrix=ssMatrix,
-    specialism="interior",
-    dispersalDist=1000,
-    minPatchSize=00, 
-    habComponent=0.9,
-    colonizationRate=x,
-    edgeSensitivity=0.99,
-    perim=FALSE,
-    fullEdgeEffectArea=1000000,
-    return(testConnect)
-  )
-  
-}
-
-dispN<-c(0.01,seq(0.05,0.95,by=0.05),0.99)
-
-
+#####create function that takes disperalRate values and passes to RHI function
 ###########################Dispersal Fun
 
 dispFun<-function(x,configPatches,configMatrix,speciesGroup,sens,dist,FEEA){
@@ -450,10 +414,16 @@ dispFun<-function(x,configPatches,configMatrix,speciesGroup,sens,dist,FEEA){
 }
 
 
-###################################################
+############################################### Run a sequence of models iterating over values for dispersalRate
 ###############################################
-############################################LO SENS
 
+#create vector of dispersal rate values from 0.01-0.99
+
+dispN<-c(0.01,seq(0.05,0.95,by=0.05),0.99)
+
+############################################LOW SENSITIVITY TESTS 
+
+##edge/mixed
 edgeMixedLoSenseDisp500<-lapply(dispN,dispFun,configPatches=mixedPatches,configMatrix=mixedMatrix,
                                 speciesGroup="edge",sens=0.1,dist=500,FEEA=100000)
                                 
@@ -465,13 +435,12 @@ edgeMixedLoSenseDisp500<-do.call("rbind",edgeMixedLoSenseDisp500) # have this
 edgeMixedLoSenseDisp500DF<-data.frame(edgeMixedLoSenseDisp500)
 
 
-plot(sampN,edgeMixedLoSenseDisp500DF[,3])
 
 
 
 ###########################################################
 
-
+#int/mixed
 intMixedLoSenseDisp500<-lapply(dispN,dispFun,configPatches=mixedPatches,configMatrix=mixedMatrix,
                                 speciesGroup="interior",sens=0.1,dist=500,FEEA=100000)
 
@@ -490,7 +459,7 @@ intMixedLoSenseDisp500DF
 ###################################################
 
 
-
+#int/SS
 intSSLoSenseDisp500<-lapply(dispN,dispFun,configPatches=ssPatches,configMatrix=ssMatrix,
                               speciesGroup="interior",sens=0.1,dist=500,FEEA=100000)
 
@@ -502,14 +471,14 @@ intSSLoSenseDisp500DF<-data.frame(intSSLoSenseDisp500)
 
 intSSLoSenseDisp500DF
 
-#plot(sampN,intSSLoSenseDisp500DF[,5])
-#plot(sampN,intSLLoSenseDisp500DF[,5])
 
 
 
 
 
 ############
+
+#edge/SS
 
 edgeSSLoSenseDisp500<-lapply(dispN,dispFun,configPatches=ssPatches,configMatrix=ssMatrix,
                              speciesGroup="edge",sens=0.1,dist=500,FEEA=100000)
@@ -526,6 +495,9 @@ edgeSSLoSenseDisp500DF
 
 
 ###############################################################
+
+#edge/SL
+
 edgeSLLoSenseDisp500<-lapply(dispN,dispFun,configPatches=slPatches,configMatrix=slMatrix,
                              speciesGroup="edge",sens=0.1,dist=500,FEEA=100000)
 
@@ -541,6 +513,7 @@ edgeSLLoSenseDisp500DF<-data.frame(edgeSLLoSenseDisp500)
 
 #################################################
 
+#int/SL
 
 intSLLoSenseDisp500<-lapply(dispN,dispFun,configPatches=slPatches,configMatrix=slMatrix,
                             speciesGroup="interior",sens=0.1,dist=500,FEEA=100000)
@@ -556,8 +529,9 @@ intSLLoSenseDisp500DF
 
 ###########################################
 ##############################################
-#################HI SENS######################
+#################HIGH SENSITIVITY TESTS######################
 
+#edge/mixed
 edgeMixedHiSenseDisp500<-lapply(dispN,dispFun,configPatches=mixedPatches,configMatrix=mixedMatrix,
                                 speciesGroup="edge",sens=0.9,dist=500,FEEA=100000)
 
@@ -573,6 +547,7 @@ head(edgeMixedHiSenseDisp500DF)
 
 ###########################################################
 
+#int/mixed
 intMixedHiSenseDisp500<-lapply(dispN,dispFun,configPatches=mixedPatches,configMatrix=mixedMatrix,
                                speciesGroup="interior",sens=0.9,dist=500,FEEA=100000)
 
@@ -583,7 +558,7 @@ intMixedHiSenseDisp500<-do.call("rbind",intMixedHiSenseDisp500) # have this
 intMixedHiSenseDisp500DF<-data.frame(intMixedHiSenseDisp500)
 
 
-
+#int/SS
 
 intSSHiSenseDisp500<-lapply(dispN,dispFun,configPatches=ssPatches,configMatrix=ssMatrix,
                             speciesGroup="interior",sens=0.9,dist=500,FEEA=100000)
@@ -600,6 +575,7 @@ intSSHiSenseDisp500DF
 
 ##################################################################
 
+#edge/SS
 
 edgeSSHiSenseDisp500<-lapply(dispN,dispFun,configPatches=ssPatches,configMatrix=ssMatrix,
                              speciesGroup="edge",sens=0.9,dist=500,FEEA=100000)
@@ -615,6 +591,7 @@ edgeSSHiSenseDisp500DF<-data.frame(edgeSSHiSenseDisp500)
 
 ###############################################################
 
+#int/SL
 
 intSLHiSenseDisp500<-lapply(dispN,dispFun,configPatches=slPatches,configMatrix=slMatrix,
                             speciesGroup="interior",sens=0.9,dist=500,FEEA=100000)
@@ -628,7 +605,7 @@ intSLHiSenseDisp500DF
 
 ########################################################
 
-
+#edge/SL
 
 edgeSLHiSenseDisp500<-lapply(dispN,dispFun,configPatches=slPatches,configMatrix=slMatrix,
                              speciesGroup="edge",sens=0.9,dist=500,FEEA=100000)
@@ -644,6 +621,7 @@ edgeSLHiSenseDisp500DF
 
 #################################################Generalists
 
+#GEN/SL
 
 genSLDisp500<-lapply(dispN,dispFun,configPatches=slPatches,configMatrix=slMatrix,
                      speciesGroup="generalist",sens=0.1,dist=500,FEEA=100000)
@@ -656,8 +634,7 @@ genSLDisp500DF<-data.frame(genSLDisp500)
 
 ################################################
 
-
-
+#GEN/SS
 
 genSSDisp500<-lapply(dispN,dispFun,configPatches=ssPatches,configMatrix=ssMatrix,
                      speciesGroup="generalist",sens=0.1,dist=500,FEEA=100000)
@@ -670,6 +647,7 @@ genSSDisp500DF<-data.frame(genSSDisp500)
 
 #################################################################
 
+#GEN/mixed
 
 genMixedDisp500<-lapply(dispN,dispFun,configPatches=mixedPatches,configMatrix=mixedMatrix,
                         speciesGroup="generalist",sens=0.1,dist=500,FEEA=100000)
@@ -683,81 +661,21 @@ genMixedDisp500DF<-data.frame(genMixedDisp500)
 
 
 
-###########################################################
+########################################################### CREATE DATA FRAME OF RESULTS
 
-figData<-cbind(dispN,edgeMixedLoSenseDisp500DF[,3],intMixedLoSenseDisp500DF[,3],
+
+figData<-as.data.frame(cbind(dispN,edgeMixedLoSenseDisp500DF[,3],intMixedLoSenseDisp500DF[,3],
                intSSLoSenseDisp500DF[,3],edgeSSLoSenseDisp500DF[,3],
                edgeSLLoSenseDisp500DF[,3],edgeMixedHiSenseDisp500DF[,3],
                intMixedHiSenseDisp500DF[,3],intSSHiSenseDisp500DF[,3],edgeSSHiSenseDisp500DF[,3],
                edgeSLHiSenseDisp500DF[,3],intSLHiSenseDisp500DF[,3],intSLLoSenseDisp500DF[,3],
-               genSLDisp500DF[,3],genSSDisp500DF[,3],genMixedDisp500DF[,3])
+               genSLDisp500DF[,3],genSSDisp500DF[,3],genMixedDisp500DF[,3]))
 
-intData<-cbind(sampN,intMixedLoSenseDisp500DF[,5],
-               intSSLoSenseDisp500DF[,5],
-               intSLLoSenseDisp500DF[,5])
-
-
-intData<-as.data.frame(intData)
-
-intData<-apply(intData,MARGIN=2,FUN=unlist)
-
-intData<-as.data.frame(intData)
-
-colnames(intData)<-c("dispersal_Rate","intMixedLo","intSSLo","intSLLo")
-
-loIntPlot<- ggplot(intData)+geom_line(aes(dispersal_Rate,intSSLo,colour="SS"),linewidth=2)+
-  
-  geom_line(aes(dispersal_Rate,intMixedLo,colour="Mixed"),linewidth=2)+
-  
-  geom_line(aes(dispersal_Rate,intSLLo,colour="SL"),linewidth=2)+
-  
-  xlab("Dispersal Probability at maxDist")+ylab("RHI")+scale_color_manual(name = "Landscape", 
-                                                                          
-                                                                          values = c("SL" = "darkblue", "SS" = "red","Mixed"="black"))#+theme(text = element_text(size = 20))   
-
-
-
-loIntPlot+theme_pubr(base_size = 22)+font("legend.text",size=29)#+labs_pubr(base_size = 20)
-
-###########################################################
-
-
-edgeData<-cbind(sampN,edgeMixedLoSenseDisp500DF[,5],
-               edgeSSLoSenseDisp500DF[,5],
-               edgeSLLoSenseDisp500DF[,5])
-
-
-edgeData<-as.data.frame(edgeData)
-
-edgeData<-apply(edgeData,MARGIN=2,FUN=unlist)
-
-edgeData<-as.data.frame(edgeData)
-
-colnames(edgeData)<-c("dispersal_Rate","edgeMixedLo","edgeSSLo","edgeSLLo")
-
-loEdgePlot<- ggplot(edgeData)+geom_line(aes(dispersal_Rate,edgeSSLo,colour="SS"),linewidth=2)+
-  
-  geom_line(aes(dispersal_Rate,edgeMixedLo,colour="Mixed"),linewidth=2)+
-  
-  geom_line(aes(dispersal_Rate,edgeSLLo,colour="SL"),linewidth=2)+
-  
-  xlab("Dispersal Probability at maxDist")+ylab("RHI")+scale_color_manual(name = "Landscape", 
-                                                                          
-                                                                          values = c("SL" = "darkblue", "SS" = "red","Mixed"="black"))#+theme(text = element_text(size = 20))   
-
-
-
-loEdgePlot+theme_pubr(base_size = 22)+font("legend.text",size=29)#+labs_pubr(base_size = 20)
-
-
-
-
-
-
+figData
 ####################
 
-figData<-as.data.frame(figData)
-head(figData)
+
+#ENSURE NUMERIC
 figData<-apply(figData,MARGIN=2,FUN=unlist)
 
 figData<-as.data.frame(figData)
@@ -766,10 +684,12 @@ colnames(figData)<-c("dispersal_Rate","edgeMixedLo","intMixedLo","intSSLo","edge
                      "edgeSLLo","edgeMixedHi","intMixedHi","intSSHi","edgeSSHi","edgeSLHi",
                      "intSLHi","intSLLo","genSL","genSS","genMixed")
 
-(figData)
+
 
 library(ggplot2)
 library(ggpubr)
+
+###############Low Sensitivity Interior models
 
 loIntPlot<- ggplot(figData)+geom_line(aes(dispersal_Rate,intSSLo,colour="SS"),linewidth=2)+
   
@@ -788,6 +708,8 @@ loIntPlot+theme_pubr(base_size = 22)+font("legend.text",size=29)#+labs_pubr(base
 
 
 ######################################################################################################
+###################################High Sensitivity Interior Models
+
 
 hiIntPlot<- ggplot(figData)+geom_line(aes(dispersal_Rate,intSSHi,colour="SS"),linewidth=2)+
   
@@ -804,6 +726,7 @@ hiIntPlot<- ggplot(figData)+geom_line(aes(dispersal_Rate,intSSHi,colour="SS"),li
 hiIntPlot+theme_pubr(base_size = 22)+font("legend.text",size=29)#+labs_pubr(base_size = 20)
 
 ######################################################################################################
+##############################################High Sensitivity Edge Models
 
 hiEdgePlot<- ggplot(figData)+geom_line(aes(dispersal_Rate,edgeSSHi,colour="SS"),linewidth=2)+
   
@@ -821,7 +744,7 @@ hiEdgePlot+theme_pubr(base_size = 22)+font("legend.text",size=29)#+labs_pubr(bas
 
 
 ############################################################################################################
-
+##################################Low Sensitivity Edge Models
 loEdgePlot<- ggplot(figData)+geom_line(aes(dispersal_Rate,edgeSSLo,colour="SS"),linewidth=2)+
   
   geom_line(aes(dispersal_Rate,edgeMixedLo,colour="Mixed"),linewidth=2)+
@@ -838,7 +761,7 @@ loEdgePlot+theme_pubr(base_size = 22)+font("legend.text",size=29)#+labs_pubr(bas
 
 
 #############################################################
-
+############################################GENERALISTS
 genPlot<- ggplot(figData)+geom_line(aes(dispersal_Rate,genSS,colour="SS"),linewidth=2)+
   
   geom_line(aes(dispersal_Rate,genMixed,colour="Mixed"),linewidth=2)+
