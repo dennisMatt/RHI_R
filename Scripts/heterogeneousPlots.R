@@ -31,9 +31,6 @@ lerp <- function(c, a, b, y, z) {
 logistic <- function(x, L=1.0, b=0.0, k, x0) {
   L / (1.0 + exp(-k*(x-x0))) + b
 }
-colnePatches
-
-plot(colnePatches$Area,colnePatches$VCI_AOP)
 
 ###
 # This makes a call to the logistic function and then scales the result to enforce a value of 1 for the 
@@ -65,24 +62,6 @@ coercedLogistic <- function(x, fullEdgeEffectArea) {
 
 
 ###
-# Returns the connectivity Value for a given landscape and set of parameters (i.e., species)
-# 
-# Params: 
-#   - `patches` = habitat patches (shapefile)
-#   - `matrix` + matrix patches with edge and cost in attribute tables (shapefile)
-#   - `specialism` = one of "interior", "edge" or "generalist"
-#   - `dispersalDist` = mean dispersal distance of the species being modeled
-#   - `habComponent` = component to determine the sensitivity of the species to patch size 
-#       (i.e. strength of relationship between extinction and patch size) 
-#   - `colonizationRate` = component setting colonization/survival success
-#   - `edgeSensitivity` = sets how sensitive the species is to "specialism". 
-#       Setting this to very small values for either edge or interior basically renders it a generalist
-#   - `minPatchSize` = optional minimum viable patch size
-#   - `perim` = if TRUE then connectivity matrix is uplifted by edge density (perimeter-edge ratio) of 
-#       habitat. If FALSE then does nothing
-#   - `fullEdgeEffectArea` = the are after which a full edge effect is realised
-###
-
 
 sl<-st_read("Data/slHeterog.shp")
 plot(sl)
@@ -126,38 +105,34 @@ ggplot(ss) +
 
 
 ggplot(mixed) +
-  geom_sf(aes(fill = Cost))+theme_pubr(base_size = 20,legend="right")+coord_sf(label_axes = "")#+font("legend.text",size=29)
+  geom_sf(aes(fill = Cost))+theme_pubr(base_size = 20,legend="right")+coord_sf(label_axes = "")
 
+#isolate patches into new object (if setting habitat cost to 0 then replace 1 here with 0)
 
+slPatches<-sl[sl$Cost==1,]
+ssPatches<-ss[ss$Cost==1,]
+mixedPatches<-mixed[mixed$Cost==1,]
 
-slPatches<-sl[sl$Cost==0,]
-ssPatches<-ss[ss$Cost==0,]
-mixedPatches<-mixed[mixed$Cost==0,]
-patches<-ssPatches
-unique(sl$Cost)
-
+#create objects for matrix
 ssMatrix<-ss[ss$Cost>1,]
-plot(ssMatrix)
-
 
 slMatrix<-sl[sl$Cost>1,]
-plot(slMatrix)
+
 
 mixedMatrix<-mixed[mixed$Cost>1,]
-(mixedMatrix)
 
 
-
-ss<-ss[,6:8]
-sl<-sl[,6:8]
-mixed<-mixed[,6:8]
-mixed
-patches<-mixedPatches
-matrix<-mixedMatrix
-sl
-ss
-castorConnect<-function(patches, matrix, specialism, dispersalDist, colonizationRate, 
-                        minPatchSize, habComponent, edgeSensitivity, perim, fullEdgeEffectArea) { 
+#######
+#######This function has seven arguments - patches = habitat patches: shapefile 
+######################################## matrix = edge source polygons 
+#####################################specialism = one of "interior", "edge" or "generalist"
+################################### edge = the size of the edge effect (for a neutral landscape, will have to update this to handle "edge rasters" in real landscapes)
+#################################### edgeIntensity = a component (suggest between 0.01 -1) that determines the shape of the kernel (distance decay of edge effect)
+#################################### maxDist = maximum dispersal distance of the species being modeled
+#####################################dispersalRate = component setting rate of dispersal success
+#####################################edgeSensitivity = sets how sensitive the species is to "specialism". Setting this to increasingly small values for either edge or interior moves the species further towards generalist
+rhiConnectHet<-function(patches,matrix,specialism,edge,edgeIntensity,maxDist,
+                     dispersalRate,edgeSensitivity,fullEdgeEffectArea){ 
   
   ## begin with a little quality control...
   
@@ -166,7 +141,7 @@ castorConnect<-function(patches, matrix, specialism, dispersalDist, colonization
     return(0)
   }
   
-  # catch the edge case (hah!) if the entire area is covered by a single patch - this
+  #  if the entire area is covered by a single patch - this
   #  causes a fail in the algorithm (patches doesn't return anything) so needs to be 
   #  caught beforehand
   if (nrow(patches) == 1){
@@ -306,27 +281,8 @@ castorConnect<-function(patches, matrix, specialism, dispersalDist, colonization
     extClump$areaMod <- expanse(vect(patches))
   }
   
-  # for loop to do any final modifications according to minimum patch size settings
-  extClump$areaFin <- NA
-  for(i in 1:nrow(extClump)) {
-    #print(extClump$areaMod[i])
-    
-    # if the modified area is too small it should be penalised
-    if(extClump$areaMod[i] < minPatchSize) {
-      
-      # apply penalisation for patches below minPatchSize
-      extClump$areaFin[i] <- extClump$areaMod[i] - (minPatchSize-extClump$areaMod[i])^habComponent}
-    
-    else {
-      
-      # just accept current value
-      extClump$areaFin[i] <- extClump$areaMod[i]
-      
-    }
-    
-    # enforce 0 as minimum area
-    if(extClump$areaFin[i] < 0) { extClump$areaFin[i] <- 0 }
-  }
+
+  
   
   ###########################################Least Cost Path calculations##############################
   #head(ssMatrix)
@@ -339,27 +295,7 @@ castorConnect<-function(patches, matrix, specialism, dispersalDist, colonization
   costRast[is.na(costRast)]<-1
   #plot(costRast)
   
-  cost1<-costRast
-  cost1[costRast>1]=10
-  #plot(cost1)
-  plot(sumRast)
-  costPatch<-cost1*sumRast
-  #plot(costPatch)
-  costPatch[costPatch>1]<-1
-  finCost<-costPatch*costRast
-  plot(finCost)
-  #hist(finCost)
-  # set patches (these are NA in the matrix layer) to zero cost so that patches are 
-  #   "free movement" (also same as edge-to-edge distance)
-  #costRast[costRast==0] <- sumRast
   
-  #costRastIntra<-costRast*sumRast
-  #plot(costRastIntra)
-  
-  #costRast1<-(costRastIntra>1)*costRast
-  #plot(costRast1)
-  #hist(costRastIntra)
-  # calculate transition matrix using inline function
   land_cost <- transition(raster(costRast), transitionFunction=function(x) 1 / mean(x), 8)
   
   # set destination points as centroids of the patches
@@ -390,7 +326,7 @@ castorConnect<-function(patches, matrix, specialism, dispersalDist, colonization
   #} 
   
   # set alpha which determines colonization probability of the species 
-  alpha= -log(colonizationRate) / dispersalDist
+  alpha= -log(dispersalRate) / maxDist
   
   # 
   #if(nrow(distMat) == 1){
@@ -432,14 +368,13 @@ castorConnect<-function(patches, matrix, specialism, dispersalDist, colonization
   # back-transform to probabilities of connectedness
   pstar.mat <- exp(-pstar.mat)                                                   
   
-  # sum probabilities of connectedness
-  pMatSum <- sum(pstar.mat)
+ 
   
   # get study area in m2
   AL <- expanse(ext)
   
   # get area vector for PC metric
-  area <- extClump$areaFin
+  area <- extClump$areaMod
   
   # sum areas from the vector
   areaSum <- sum(area)
@@ -447,47 +382,21 @@ castorConnect<-function(patches, matrix, specialism, dispersalDist, colonization
   # get product of all patch areas ij and multiply by probabilities above
   PCmatNew <- outer(area,area) * pstar.mat 
   
-  # calculate sum of edge ratio (perimeter / area) for each patch
-  edgeRatio <- sum(st_perimeter(patches) / (st_area(patches)))
+
   
-  # uplift by 1+ edge ratio if perim is set to TRUE
-  # JJH: I added brackets here to correct the calculation
   pcMatSum <- sum(PCmatNew)
   
   # divide by total area of the study squared to get the PC metric  
   pcMod <- pcMatSum / as.numeric(AL^2) 
   #pcMod <- sqrt(pcMatSum) / as.numeric(AL)
   # compile results into list and return
-  return(list(areaSum, edgeRatio, pMatSum, pcMatSum, pcMod))
+  return(list(areaSum, pcMatSum, pcMod))
   #print(x)
 }
 
 
 ######################## Do some testing  
 
-# load data
-#SL<-st_read("data/SL_SmallGridDissolve.shp")
-#slMat<-st_read("data/SL_MatrixSmallDissolve.shp")
-
-head(slPatches)
-slPatches<-slPatches[,c(6,7,8)]
-
-head(slMatrix)
-slMatrix<-slMatrix[,c(6,7,8)]
-
-# run function
-testConnectIntSL<-castorConnect(
-  patches=slPatches,
-  matrix=slMatrix,
-  specialism="interior",
-  dispersalDist=5000,
-  minPatchSize=0, 
-  habComponent=0.9,
-  colonizationRate=0.1,
-  edgeSensitivity=0.09,
-  perim=FALSE,
-  fullEdgeEffectArea=1000000
-)
 
 ######################## Do some testing  
 
@@ -497,22 +406,17 @@ ssPatches
 #plot(mixedMatrix)
 
 # run function
-testConnect<-castorConnect(
+testConnect<-rhiConnect(
   patches=mixedPatches,
   matrix=mixedMatrix,
   specialism="edge",
-  dispersalDist=5000,
-  minPatchSize=0, 
-  habComponent=0.9,
-  colonizationRate=0.05,
+  maxDist=5000,
+  dispersalRate=0.05,
   edgeSensitivity=0.5,
-  perim=FALSE,
   fullEdgeEffectArea=10000
 )
 
-testConnect
 
-plot(ssMatrix)
 
 edgeEffectFun<-function(x){
   testConnect<-castorConnect(
@@ -531,34 +435,28 @@ edgeEffectFun<-function(x){
   
 }
 
-sampN<-seq(0.05,1,by=0.05)
-sampN
+dispN<-c(0.01,seq(0.05,0.95,by=0.05),0.99)
+
+
+###########################Dispersal Fun
+
+dispFun<-function(x,configPatches,configMatrix,speciesGroup,sens,dist,FEEA){
+  
+  intRHI<-rhiConnectHet(patches = configPatches,matrix = configMatrix,specialism = speciesGroup,maxDist = dist,dispersalRate = x,edgeSensitivity = sens,fullEdgeEffectArea = FEEA)
+  print(x)
+  
+  return(intRHI)
+  
+}
+
 
 ###################################################
 ###############################################
 ############################################LO SENS
 
-edgeEffectFun<-function(x){
-  testConnect<-castorConnect(
-    patches=mixedPatches,
-    matrix=mixedMatrix,
-    specialism="edge",
-    dispersalDist=500,
-    minPatchSize=00, 
-    habComponent=0.9,
-    colonizationRate=x,
-    edgeSensitivity=0.1,
-    perim=FALSE,
-    fullEdgeEffectArea=10000000
-    
-  )
-  print(x)
-  return(testConnect)
-}
-
-
-
-edgeMixedLoSenseDisp500<-lapply(sampN,edgeEffectFun)
+edgeMixedLoSenseDisp500<-lapply(dispN,dispFun,configPatches=mixedPatches,configMatrix=mixedMatrix,
+                                speciesGroup="edge",sens=0.1,dist=500,FEEA=100000)
+                                
 
 edgeMixedLoSenseDisp500
 
@@ -567,31 +465,16 @@ edgeMixedLoSenseDisp500<-do.call("rbind",edgeMixedLoSenseDisp500) # have this
 edgeMixedLoSenseDisp500DF<-data.frame(edgeMixedLoSenseDisp500)
 
 
-
+plot(sampN,edgeMixedLoSenseDisp500DF[,3])
 
 
 
 ###########################################################
 
-edgeEffectFun<-function(x){
-  testConnect<-castorConnect(
-    patches=mixedPatches,
-    matrix=mixedMatrix,
-    specialism="interior",
-    dispersalDist=500,
-    minPatchSize=00, 
-    habComponent=0.9,
-    colonizationRate=x,
-    edgeSensitivity=0.1,
-    perim=FALSE,
-    fullEdgeEffectArea=10000000
-    
-  )
-  print(x)
-  return(testConnect)
-}
 
-intMixedLoSenseDisp500<-lapply(sampN,edgeEffectFun)
+intMixedLoSenseDisp500<-lapply(dispN,dispFun,configPatches=mixedPatches,configMatrix=mixedMatrix,
+                                speciesGroup="interior",sens=0.1,dist=500,FEEA=100000)
+
 
 intMixedLoSenseDisp500
 
@@ -606,26 +489,10 @@ intMixedLoSenseDisp500DF
 
 ###################################################
 
-edgeEffectFun<-function(x){
-  testConnect<-castorConnect(
-    patches=ssPatches,
-    matrix=ssMatrix,
-    specialism="interior",
-    dispersalDist=500,
-    minPatchSize=00, 
-    habComponent=0.9,
-    colonizationRate=x,
-    edgeSensitivity=0.1,
-    perim=FALSE,
-    fullEdgeEffectArea=10000000
-    
-  )
-  print(x)
-  return(testConnect)
-}
 
 
-intSSLoSenseDisp500<-lapply(sampN,edgeEffectFun)
+intSSLoSenseDisp500<-lapply(dispN,dispFun,configPatches=ssPatches,configMatrix=ssMatrix,
+                              speciesGroup="interior",sens=0.1,dist=500,FEEA=100000)
 
 intSSLoSenseDisp500
 
@@ -644,26 +511,8 @@ intSSLoSenseDisp500DF
 
 ############
 
-edgeEffectFun<-function(x){
-  testConnect<-castorConnect(
-    patches=ssPatches,
-    matrix=ssMatrix,
-    specialism="edge",
-    dispersalDist=500,
-    minPatchSize=00, 
-    habComponent=0.9,
-    colonizationRate=x,
-    edgeSensitivity=0.1,
-    perim=FALSE,
-    fullEdgeEffectArea=10000000
-    
-  )
-  print(x)
-  return(testConnect)
-}
-
-
-edgeSSLoSenseDisp500<-lapply(sampN,edgeEffectFun)
+edgeSSLoSenseDisp500<-lapply(dispN,dispFun,configPatches=ssPatches,configMatrix=ssMatrix,
+                             speciesGroup="edge",sens=0.1,dist=500,FEEA=100000)
 
 edgeSSLoSenseDisp500
 
@@ -677,26 +526,8 @@ edgeSSLoSenseDisp500DF
 
 
 ###############################################################
-
-edgeEffectFun<-function(x){
-  testConnect<-castorConnect(
-    patches=slPatches,
-    matrix=slMatrix,
-    specialism="edge",
-    dispersalDist=500,
-    minPatchSize=00, 
-    habComponent=0.9,
-    colonizationRate=x,
-    edgeSensitivity=0.1,
-    perim=FALSE,
-    fullEdgeEffectArea=10000000
-    
-  )
-  print(x)
-  return(testConnect)
-}
-
-edgeSLLoSenseDisp500<-lapply(sampN,edgeEffectFun)
+edgeSLLoSenseDisp500<-lapply(dispN,dispFun,configPatches=slPatches,configMatrix=slMatrix,
+                             speciesGroup="edge",sens=0.1,dist=500,FEEA=100000)
 
 edgeSLLoSenseDisp500
 
@@ -710,25 +541,9 @@ edgeSLLoSenseDisp500DF<-data.frame(edgeSLLoSenseDisp500)
 
 #################################################
 
-edgeEffectFun<-function(x){
-  testConnect<-castorConnect(
-    patches=slPatches,
-    matrix=slMatrix,
-    specialism="interior",
-    dispersalDist=500,
-    minPatchSize=00, 
-    habComponent=0.9,
-    colonizationRate=x,
-    edgeSensitivity=0.1,
-    perim=FALSE,
-    fullEdgeEffectArea=10000000
-    
-  )
-  print(x)
-  return(testConnect)
-}
 
-intSLLoSenseDisp500<-lapply(sampN,edgeEffectFun)
+intSLLoSenseDisp500<-lapply(dispN,dispFun,configPatches=slPatches,configMatrix=slMatrix,
+                            speciesGroup="interior",sens=0.1,dist=500,FEEA=100000)
 
 
 intSLLoSenseDisp500<-do.call("rbind",intSLLoSenseDisp500) # have this
@@ -743,26 +558,8 @@ intSLLoSenseDisp500DF
 ##############################################
 #################HI SENS######################
 
-edgeEffectFun<-function(x){
-  testConnect<-castorConnect(
-    patches=mixedPatches,
-    matrix=mixedMatrix,
-    specialism="edge",
-    dispersalDist=500,
-    minPatchSize=00, 
-    habComponent=0.9,
-    colonizationRate=x,
-    edgeSensitivity=0.9,
-    perim=FALSE,
-    fullEdgeEffectArea=10000000
-    
-  )
-  print(x)
-  return(testConnect)
-}
-
-
-edgeMixedHiSenseDisp500<-lapply(sampN,edgeEffectFun)
+edgeMixedHiSenseDisp500<-lapply(dispN,dispFun,configPatches=mixedPatches,configMatrix=mixedMatrix,
+                                speciesGroup="edge",sens=0.9,dist=500,FEEA=100000)
 
 edgeMixedHiSenseDisp500
 
@@ -776,26 +573,8 @@ head(edgeMixedHiSenseDisp500DF)
 
 ###########################################################
 
-edgeEffectFun<-function(x){
-  testConnect<-castorConnect(
-    patches=mixedPatches,
-    matrix=mixedMatrix,
-    specialism="interior",
-    dispersalDist=500,
-    minPatchSize=00, 
-    habComponent=0.9,
-    colonizationRate=x,
-    edgeSensitivity=0.9,
-    perim=FALSE,
-    fullEdgeEffectArea=10000000
-    
-  )
-  print(x)
-  return(testConnect)
-}
-
-
-intMixedHiSenseDisp500<-lapply(sampN,edgeEffectFun)
+intMixedHiSenseDisp500<-lapply(dispN,dispFun,configPatches=mixedPatches,configMatrix=mixedMatrix,
+                               speciesGroup="interior",sens=0.9,dist=500,FEEA=100000)
 
 intMixedHiSenseDisp500
 
@@ -806,32 +585,8 @@ intMixedHiSenseDisp500DF<-data.frame(intMixedHiSenseDisp500)
 
 
 
-
-
-
-###################################################
-#################################################### Do NEXT!
-
-edgeEffectFun<-function(x){
-  testConnect<-castorConnect(
-    patches=ssPatches,
-    matrix=ssMatrix,
-    specialism="interior",
-    dispersalDist=500,
-    minPatchSize=00, 
-    habComponent=0.9,
-    colonizationRate=x,
-    edgeSensitivity=0.9,
-    perim=FALSE,
-    fullEdgeEffectArea=10000000
-    
-  )
-  print(x)
-  return(testConnect)
-}
-
-
-intSSHiSenseDisp500<-lapply(sampN,edgeEffectFun)
+intSSHiSenseDisp500<-lapply(dispN,dispFun,configPatches=ssPatches,configMatrix=ssMatrix,
+                            speciesGroup="interior",sens=0.9,dist=500,FEEA=100000)
 
 intSSHiSenseDisp500
 
@@ -845,25 +600,9 @@ intSSHiSenseDisp500DF
 
 ##################################################################
 
-edgeEffectFun<-function(x){
-  testConnect<-castorConnect(
-    patches=ssPatches,
-    matrix=ssMatrix,
-    specialism="edge",
-    dispersalDist=500,
-    minPatchSize=00, 
-    habComponent=0.9,
-    colonizationRate=x,
-    edgeSensitivity=0.9,
-    perim=FALSE,
-    fullEdgeEffectArea=10000000
-    
-  )
-  print(x)
-  return(testConnect)
-}
 
-edgeSSHiSenseDisp500<-lapply(sampN,edgeEffectFun)
+edgeSSHiSenseDisp500<-lapply(dispN,dispFun,configPatches=ssPatches,configMatrix=ssMatrix,
+                             speciesGroup="edge",sens=0.9,dist=500,FEEA=100000)
 
 edgeSSHiSenseDisp500
 
@@ -876,25 +615,9 @@ edgeSSHiSenseDisp500DF<-data.frame(edgeSSHiSenseDisp500)
 
 ###############################################################
 
-edgeEffectFun<-function(x){
-  testConnect<-castorConnect(
-    patches=slPatches,
-    matrix=slMatrix,
-    specialism="interior",
-    dispersalDist=500,
-    minPatchSize=00, 
-    habComponent=0.9,
-    colonizationRate=x,
-    edgeSensitivity=0.9,
-    perim=FALSE,
-    fullEdgeEffectArea=10000000
-    
-  )
-  print(x)
-  return(testConnect)
-}
 
-intSLHiSenseDisp500<-lapply(sampN,edgeEffectFun)
+intSLHiSenseDisp500<-lapply(dispN,dispFun,configPatches=slPatches,configMatrix=slMatrix,
+                            speciesGroup="interior",sens=0.9,dist=500,FEEA=100000)
 
 intSLHiSenseDisp500
 
@@ -905,25 +628,10 @@ intSLHiSenseDisp500DF
 
 ########################################################
 
-edgeEffectFun<-function(x){
-  testConnect<-castorConnect(
-    patches=slPatches,
-    matrix=slMatrix,
-    specialism="edge",
-    dispersalDist=500,
-    minPatchSize=00, 
-    habComponent=0.9,
-    colonizationRate=x,
-    edgeSensitivity=0.9,
-    perim=FALSE,
-    fullEdgeEffectArea=10000000
-    
-  )
-  print(x)
-  return(testConnect)
-}
 
-edgeSLHiSenseDisp500<-lapply(sampN,edgeEffectFun)
+
+edgeSLHiSenseDisp500<-lapply(dispN,dispFun,configPatches=slPatches,configMatrix=slMatrix,
+                             speciesGroup="edge",sens=0.9,dist=500,FEEA=100000)
 
 edgeSLHiSenseDisp500
 
@@ -937,25 +645,8 @@ edgeSLHiSenseDisp500DF
 #################################################Generalists
 
 
-edgeEffectFun<-function(x){
-  testConnect<-castorConnect(
-    patches=slPatches,
-    matrix=slMatrix,
-    specialism="generalist",
-    dispersalDist=500,
-    minPatchSize=00, 
-    habComponent=0.9,
-    colonizationRate=x,
-    edgeSensitivity=0.95,
-    perim=FALSE,
-    fullEdgeEffectArea=10000000
-    
-  )
-  print(x)
-  return(testConnect)
-}
-
-genSLDisp500<-lapply(sampN,edgeEffectFun)
+genSLDisp500<-lapply(dispN,dispFun,configPatches=slPatches,configMatrix=slMatrix,
+                     speciesGroup="generalist",sens=0.1,dist=500,FEEA=100000)
 
 genSLDisp500
 
@@ -967,25 +658,9 @@ genSLDisp500DF<-data.frame(genSLDisp500)
 
 
 
-edgeEffectFun<-function(x){
-  testConnect<-castorConnect(
-    patches=ssPatches,
-    matrix=ssMatrix,
-    specialism="generalist",
-    dispersalDist=500,
-    minPatchSize=00, 
-    habComponent=0.9,
-    colonizationRate=x,
-    edgeSensitivity=0.95,
-    perim=FALSE,
-    fullEdgeEffectArea=10000000
-    
-  )
-  print(x)
-  return(testConnect)
-}
 
-genSSDisp500<-lapply(sampN,edgeEffectFun)
+genSSDisp500<-lapply(dispN,dispFun,configPatches=ssPatches,configMatrix=ssMatrix,
+                     speciesGroup="generalist",sens=0.1,dist=500,FEEA=100000)
 
 genSSDisp500
 
@@ -996,26 +671,8 @@ genSSDisp500DF<-data.frame(genSSDisp500)
 #################################################################
 
 
-
-edgeEffectFun<-function(x){
-  testConnect<-castorConnect(
-    patches=mixedPatches,
-    matrix=mixedMatrix,
-    specialism="generalist",
-    dispersalDist=500,
-    minPatchSize=00, 
-    habComponent=0.9,
-    colonizationRate=x,
-    edgeSensitivity=0.95,
-    perim=FALSE,
-    fullEdgeEffectArea=10000000
-    
-  )
-  print(x)
-  return(testConnect)
-}
-
-genMixedDisp500<-lapply(sampN,edgeEffectFun)
+genMixedDisp500<-lapply(dispN,dispFun,configPatches=mixedPatches,configMatrix=mixedMatrix,
+                        speciesGroup="generalist",sens=0.1,dist=500,FEEA=100000)
 
 genMixedDisp500
 
@@ -1028,12 +685,12 @@ genMixedDisp500DF<-data.frame(genMixedDisp500)
 
 ###########################################################
 
-figData<-cbind(sampN,edgeMixedLoSenseDisp500DF[,5],intMixedLoSenseDisp500DF[,5],
-               intSSLoSenseDisp500DF[,5],edgeSSLoSenseDisp500DF[,5],
-               edgeSLLoSenseDisp500DF[,5],edgeMixedHiSenseDisp500DF[,5],
-               intMixedHiSenseDisp500DF[,5],intSSHiSenseDisp500DF[,5],edgeSSHiSenseDisp500DF[,5],
-               edgeSLHiSenseDisp500DF[,5],intSLHiSenseDisp500DF[,5],intSLLoSenseDisp500DF[,5])
-               #genSLDisp500DF[,5],genSSDisp500DF[,5],genMixedDisp500DF[,5])
+figData<-cbind(dispN,edgeMixedLoSenseDisp500DF[,3],intMixedLoSenseDisp500DF[,3],
+               intSSLoSenseDisp500DF[,3],edgeSSLoSenseDisp500DF[,3],
+               edgeSLLoSenseDisp500DF[,3],edgeMixedHiSenseDisp500DF[,3],
+               intMixedHiSenseDisp500DF[,3],intSSHiSenseDisp500DF[,3],edgeSSHiSenseDisp500DF[,3],
+               edgeSLHiSenseDisp500DF[,3],intSLHiSenseDisp500DF[,3],intSLLoSenseDisp500DF[,3],
+               genSLDisp500DF[,3],genSSDisp500DF[,3],genMixedDisp500DF[,3])
 
 intData<-cbind(sampN,intMixedLoSenseDisp500DF[,5],
                intSSLoSenseDisp500DF[,5],
@@ -1100,14 +757,14 @@ loEdgePlot+theme_pubr(base_size = 22)+font("legend.text",size=29)#+labs_pubr(bas
 ####################
 
 figData<-as.data.frame(figData)
-
+head(figData)
 figData<-apply(figData,MARGIN=2,FUN=unlist)
 
 figData<-as.data.frame(figData)
 
 colnames(figData)<-c("dispersal_Rate","edgeMixedLo","intMixedLo","intSSLo","edgeSSLo",
                      "edgeSLLo","edgeMixedHi","intMixedHi","intSSHi","edgeSSHi","edgeSLHi",
-                     "intSLHi","intSLLo")#"genSL","genSS","genMixed")
+                     "intSLHi","intSLLo","genSL","genSS","genMixed")
 
 (figData)
 
