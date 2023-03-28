@@ -21,15 +21,30 @@ mixed<-st_read("Data/mixedHomog.shp")
 
 
 #######
-#######This function has six arguments - patches = habitat patches: shapefile 
+#######This function has seven arguments - patches = habitat patches: shapefile 
 ######################################## specialism = one of "interior", "edge" or "generalist"
 ################################### edge = the size of the edge effect (for a neutral landscape, will have to update this to handle "edge rasters" in real landscapes)
 #################################### edgeIntensity = a component (suggest between 0.01 -1) that determines the shape of the kernel (distance decay of edge effect)
 #################################### maxDist = maximum dispersal distance of the species being modeled
 #####################################dispersalRate = component setting rate of dispersal success
 #####################################edgeSensitivity = sets how sensitive the species is to "specialism". Setting this to increasingly small values for either edge or interior moves the species further towards generalist
-rhiConnect<-function(patches,specialism,edge,edgeIntensity,maxDist,costRaster,dispersalRate,edgeSensitivity){ 
+rhiConnectHom<-function(patches,specialism,edge,edgeIntensity,maxDist,dispersalRate,edgeSensitivity){ 
+  ## begin with a little quality control...
   
+  # a landscape with no patches gets an 'easy' 0
+  if (nrow(patches) == 0){
+    return(0)
+  }
+  
+  #  if the entire area is covered by a single patch - this
+  #  causes a fail in the algorithm (patches doesn't return anything) so needs to be 
+  #  caught beforehand
+  if (nrow(patches) == 1){
+    return(1)
+  }
+  
+  
+  ## rasterise the patches
   
   r<-st_rasterize(patches) # need to rasterize the patches to get at edge kernel and area
   r<-rast(r)#convert to terra library, it's better.
@@ -177,7 +192,7 @@ intVec
 #create function to take values for edgeIntensity and return RHI result
 intFun<-function(x,config,speciesGroup){
   
-  intRHI<-rhiConnect(patches = config,specialism = speciesGroup,edge = 100,edgeIntensity = x,maxDist = 2600,dispersalRate = 0.05,edgeSensitivity = 1)
+  intRHI<-rhiConnectHom(patches = config,specialism = speciesGroup,edge = 100,edgeIntensity = x,maxDist = 2600,dispersalRate = 0.05,edgeSensitivity = 1)
   print(x)
   
   return(intRHI)
@@ -190,8 +205,9 @@ intFun<-function(x,config,speciesGroup){
 #Edge SL
 intEdgeSL<-lapply(intVec,intFun,config=SL,speciesGroup="edge")
 
-
+#Combine results
 intEdgeSL<-do.call("rbind",intEdgeSL)
+#Create Data Frame
 intEdgeSLDF<-data.frame(intEdgeSL)
 
 
