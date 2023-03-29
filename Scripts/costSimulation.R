@@ -1,12 +1,14 @@
 
 
 ############################################SL####################################################
-install.packages(c("dplyr","sf","terra","igraph","stars","ggplot2","ggpubr"))
+install.packages(c("sf","terra","igraph","stars","ggplot2","ggpubr"))
 library(sf)
 library(lwgeom)
 library(stars)
 library(starsExtra)
-
+library(igraph)
+library(ggplot2)
+library(ggpubr)
 
 #Read in the data
 SL<-st_read("Data/slHomog.shp")
