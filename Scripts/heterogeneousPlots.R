@@ -74,9 +74,10 @@ ss<-ss[,6:8]
 sl<-sl[,6:8]
 mixed<-mixed[,6:8]
 
-#set habitat polygons cost value to 1 (this is just to reproduce Fig. 4, we deal with habitat movement 
-#cost values inside the RHI function)
+#set within-habitat patch cost value to 1 (this is just to reproduce Fig. 4 in Dennis et al., 2023, we otherwise deal with habitat movement 
+#cost values inside the RHI connectivity functions)
 
+# for SS landscapes
 for(i in 1:nrow(ss)){
 
   if(ss$Cost[i]==0){
@@ -84,13 +85,14 @@ for(i in 1:nrow(ss)){
 }else{ss$Cost[i]=ss$Cost[i]}
 }
 
-
+#for SL landscapes
 for(i in 1:nrow(sl)){
   if(sl$Cost[i]==0){
     sl$Cost[i]=1
   }else{sl$Cost[i]=sl$Cost[i]}
 }
 
+#for Mixed landscapes
 for(i in 1:nrow(mixed)){
   if(mixed$Cost[i]==0){
     mixed$Cost[i]=1
@@ -124,7 +126,7 @@ slMatrix<-sl[sl$Cost>1,]
 
 mixedMatrix<-mixed[mixed$Cost>1,]
 
-#set up the RHI function to reproduce analyses in Dennis et al. 2023
+#set up the RHI function to reproduce analyses in Dennis et al. 2023 Fig 4
 
 #######
 #######This function has nine arguments - patches = habitat patches: shapefile 
