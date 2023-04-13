@@ -16,7 +16,9 @@ SS<-st_read("Data/ssHomog.shp")
 
 
 #######
-#######This function has eight arguments - patches = habitat patches: shapefile 
+#######This function is a modified version of the Realized Habitat Index base function to test with-patch movement cost
+######################################It has eight arguments:
+###################################### patches = habitat patches: shapefile 
 ######################################## specialism = one of "interior", "edge" or "generalist"
 ################################### edge = the size of the edge effect (for a homogenous landscape)
 #################################### edgeIntensity = a component (suggest between 0.01 -1) that determines the shape of the kernel (distance decay of edge effect)
@@ -335,12 +337,3 @@ edgePlot+theme_pubr(base_size = 22)+font("legend.text",size=29)
 ###################################END
 
 
-costRHI<-rhiCost(patches = SL,specialism = "interior",edge = 100,patchCost = "EDGE",edgeIntensity = 0.5,maxDist = 2000,dispersalRate = 0.05,edgeSensitivity = 0.5)
-
-costRHI_100_edge<-rhiCost(patches = SL,specialism = "interior",edge = 100,patchCost = "EDGE",edgeIntensity = 0.5,maxDist = 2000,dispersalRate = 0.05,edgeSensitivity = 0.5)
-costRHI_10_Full<-rhiCost(patches = SL,specialism = "interior",edge = 10,patchCost = "FULL",edgeIntensity = 0.5,maxDist = 2000,dispersalRate = 0.05,edgeSensitivity = 0.5)
-costRHI_100_Full<-rhiCost(patches = SL,specialism = "interior",edge = 100,patchCost = "FULL",edgeIntensity = 0.5,maxDist = 2000,dispersalRate = 0.05,edgeSensitivity = 0.5)
-costRHI_100_edge<-rhiCost(patches = SL,specialism = "interior",edge = 100,patchCost = "EDGE",edgeIntensity = 0.5,maxDist = 2000,dispersalRate = 0.05,edgeSensitivity = 0.5)
-
-(costRHI_100_edge-costRHI_100_Full)/costRHI_100_Full*100
-(costRHI_10_edge-costRHI_10_Full)/costRHI_10_Full*100
