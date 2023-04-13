@@ -19,7 +19,7 @@ SS<-st_read("Data/ssHomog.shp")
 #######This function has eight arguments - patches = habitat patches: shapefile 
 ######################################## specialism = one of "interior", "edge" or "generalist"
 ################################### edge = the size of the edge effect (for a homogenous landscape)
-#################################### edgeComponent = a component (suggest between 0.01 -1) that determines the shape of the kernel (distance decay of edge effect)
+#################################### edgeIntensity = a component (suggest between 0.01 -1) that determines the shape of the kernel (distance decay of edge effect)
 #################################### maxDist = mean dispersal distance of the species being modeled
  
 #####################################dispersalRate = component setting colonization/survival success
@@ -29,7 +29,7 @@ rhiCost<-function(patches,specialism,edge,edgeIntensity,maxDist,dispersalRate,ed
   
   
   r<-st_rasterize(patches) # need to rasterize the patches to get at edge kernel and area
-  r<-rast(r)#convert to terra library, it's better.
+  r<-rast(r)#convert to terra library.
   
   r<-disagg(r,fact=2)# get data to some resolution to reliably establish relative area later on will need to revisit this for using actual patch polygons
   
@@ -59,7 +59,8 @@ rhiCost<-function(patches,specialism,edge,edgeIntensity,maxDist,dispersalRate,ed
   distEdge=log(edgeIntensity)/edge# this sets the edge distance and the shape of neg. exp. curve
   
   edgeRast<-exp(distEdge*distClump) # this creates an edge raster where 1 = full edge effect i.e. remove that cell(this happens below) and 0 = no edge effect
-  plot(edgeRast)
+  
+  #for edge specialists need the inverse of edgeRast to represent habitat
   invEdge<-1-edgeRast
   
   
@@ -84,7 +85,7 @@ rhiCost<-function(patches,specialism,edge,edgeIntensity,maxDist,dispersalRate,ed
   
   
   
-  
+  # set within-patch movement cost to either "FULL" ~ Euclidean distance or "EDGE" = edge raster
   if(patchCost=="FULL"){
     costRaster<-edgeRast
     costRaster[costRaster==1]=2
@@ -95,9 +96,11 @@ rhiCost<-function(patches,specialism,edge,edgeIntensity,maxDist,dispersalRate,ed
     costRaster[costRaster==1]=2}
   
   
+  #create transition matrix for least cost analysis
   land_cost <- transition(raster(costRaster), transitionFunction=function(x) 1 / mean(x), 8)
   
-  
+  # create within-patch centroids (st_point_on_surface function ensure centroids are within the patch 
+  # - important for irregular shaped polygons)
   sites <- SpatialPoints(st_coordinates(st_point_on_surface(patches)))
   
   
@@ -116,14 +119,14 @@ rhiCost<-function(patches,specialism,edge,edgeIntensity,maxDist,dispersalRate,ed
   
   if(nrow(distMat)>1){ # in case modelling on single patch then need if else to side step matrix error here
     
-  distMat<-apply(distMat,MARGIN=1,FUN=as.numeric)}else{distMat=distMat} # annoyingly need to make sure all elements are numeric here
+  distMat<-apply(distMat,MARGIN=1,FUN=as.numeric)}else{distMat=distMat} # need to make sure all elements are numeric here
   
   alpha= -log(dispersalRate)/maxDist# set alpha which determines colonization probability of the species 
   
   if(nrow(distMat)==1){A.prob<- matrix(1, nrow=nrow(distMat), ncol=ncol(distMat)) # for single patches just set diagonal to 1
   
   A.prob<-as.matrix(A.prob)
-  #A.prob
+  
   graph.Aprob <- graph.adjacency(A.prob, mode="undirected", weighted=T)}
   
   else{
@@ -149,26 +152,27 @@ rhiCost<-function(patches,specialism,edge,edgeIntensity,maxDist,dispersalRate,ed
   AL<-expanse(extBuff)# get study area in m2
   
   
-  area<-extClump$areaMod # get area vector for PC metric
+  area<-extClump$areaMod # get area vector 
   
   
   
   
   
-  PCmat <- outer(area,area)*pstar.mat #get product of all patch areas ij (to the power of something less that 1) and multiply by probabilities above.
+  PCmat <- outer(area,area)*pstar.mat #get product of all patch areas ij and multiply by probabilities above.
   
+  # sum PCmat
   pcMatSum<-sum(PCmat)
   
   
     
     
-    pcMod <- pcMatSum/as.numeric(AL^2) #divide by total area of the study squared to get the PC metric  
+  RHI <- pcMatSum/as.numeric(AL^2) #divide by total area of the study squared to get the RHI metric  
     
   
   
   
   
-  return(pcMod)
+  return(RHI)
 }
 
 #set vector of maxDist values
@@ -180,7 +184,7 @@ dispVec<-seq(500,10000,by=500)
 
 dispFun<-function(x,cost,config,speciesGroup){
   
-  costRHI<-rhiCost(patches = config,specialism = speciesGroup,edge = 100,patchCost = cost,edgeIntensity = 0.5,maxDist = x,dispersalRate = 0.05,edgeSensitivity = 0.5)
+  costRHI<-rhiCost(patches = config,specialism = speciesGroup,edge = 50,patchCost = cost,edgeIntensity = 0.5,maxDist = x,dispersalRate = 0.05,edgeSensitivity = 0.5)
   print(x)
   
   return(costRHI)
@@ -330,3 +334,13 @@ edgePlot+theme_pubr(base_size = 22)+font("legend.text",size=29)
 
 ###################################END
 
+
+costRHI<-rhiCost(patches = SL,specialism = "interior",edge = 100,patchCost = "EDGE",edgeIntensity = 0.5,maxDist = 2000,dispersalRate = 0.05,edgeSensitivity = 0.5)
+
+costRHI_100_edge<-rhiCost(patches = SL,specialism = "interior",edge = 100,patchCost = "EDGE",edgeIntensity = 0.5,maxDist = 2000,dispersalRate = 0.05,edgeSensitivity = 0.5)
+costRHI_10_Full<-rhiCost(patches = SL,specialism = "interior",edge = 10,patchCost = "FULL",edgeIntensity = 0.5,maxDist = 2000,dispersalRate = 0.05,edgeSensitivity = 0.5)
+costRHI_100_Full<-rhiCost(patches = SL,specialism = "interior",edge = 100,patchCost = "FULL",edgeIntensity = 0.5,maxDist = 2000,dispersalRate = 0.05,edgeSensitivity = 0.5)
+costRHI_100_edge<-rhiCost(patches = SL,specialism = "interior",edge = 100,patchCost = "EDGE",edgeIntensity = 0.5,maxDist = 2000,dispersalRate = 0.05,edgeSensitivity = 0.5)
+
+(costRHI_100_edge-costRHI_100_Full)/costRHI_100_Full*100
+(costRHI_10_edge-costRHI_10_Full)/costRHI_10_Full*100
