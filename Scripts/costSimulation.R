@@ -27,6 +27,9 @@ SS<-st_read("Data/ssHomog.shp")
 #####################################dispersalRate = component setting colonization/survival success
 #####################################edgeSensitivity = sets how sensitive the species is to "specialism". Setting this to very small values for either edge or interior basically renders it a generalist
 #######################################patchCost = one of "EDGE" or "FULL" to set within-patch cost to the pixel edge value (range 0-1) or to 1 
+
+
+
 rhiCost<-function(patches,specialism,edge,edgeIntensity,maxDist,dispersalRate,edgeSensitivity,patchCost){ 
   
   
