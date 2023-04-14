@@ -3,6 +3,8 @@
 ############################################SL####################################################
 install.packages(c("sf","terra","igraph","stars","ggplot2","ggpubr"))
 library(sf)
+library(terra)
+library(gdistance)
 library(lwgeom)
 library(stars)
 library(starsExtra)
@@ -81,7 +83,7 @@ rhiCost<-function(patches,specialism,edge,edgeIntensity,maxDist,dispersalRate,ed
   #plot(allRast)
   
   extClump<-extract(edgeClump, patches, fun=sum, method="simple", bind=T)
-  plot(edgeClump)
+  #plot(edgeClump)
   head(extClump)
   # get cell area
   cellArea<-res(edgeClump)[1]^2 
@@ -189,7 +191,7 @@ dispVec<-seq(500,10000,by=500)
 
 dispFun<-function(x,cost,config,speciesGroup){
   
-  costRHI<-rhiCost(patches = config,specialism = speciesGroup,edge = 50,patchCost = cost,edgeIntensity = 0.5,maxDist = x,dispersalRate = 0.05,edgeSensitivity = 0.5)
+  costRHI<-rhiCost(patches = config,specialism = speciesGroup,edge = 100,patchCost = cost,edgeIntensity = 0.2,maxDist = x,dispersalRate = 0.05,edgeSensitivity = 0.5)
   print(x)
   
   return(costRHI)
@@ -316,8 +318,6 @@ intPlot<- ggplot(costDataAll)+geom_line(aes(dispVec,slDiffInt,colour="SL"),linew
                                                             
                                                             values = c("SL" = "darkblue", "SS" = "darkred"))#+theme(text = element_text(size = 20))   
 
-
-
 intPlot+theme_pubr(base_size = 22)+font("legend.text",size=29)#+labs_pubr(base_size = 20)
 
 
@@ -330,8 +330,6 @@ edgePlot<- ggplot(costDataAll)+geom_line(aes(dispVec,slDiffEdge,colour="SL"),lin
                                                                         
                                                                         values = c("SL" = "darkblue", "SS" = "darkred"))#+theme(text = element_text(size = 20))   
 
-
-  
 
 edgePlot+theme_pubr(base_size = 22)+font("legend.text",size=29)
 

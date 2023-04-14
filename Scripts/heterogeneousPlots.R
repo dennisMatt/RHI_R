@@ -129,7 +129,8 @@ mixedMatrix<-mixed[mixed$Cost>1,]
 #set up the RHI function to reproduce analyses in Dennis et al. 2023 Fig 4
 
 #######
-#######This function has nine arguments - patches = habitat patches: shapefile 
+#######This function has nine arguments:
+################################# patches = habitat patches: shapefile 
 ######################################## matrix = edge source polygons 
 #####################################specialism = one of "interior", "edge" or "generalist"
 ################################### edge = the size of the edge effect (for a neutral landscape, will have to update this to handle "edge rasters" in real landscapes)

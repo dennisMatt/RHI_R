@@ -189,7 +189,7 @@ rhiConnectHom<-function(patches,specialism,edge,edgeIntensity,maxDist,dispersalR
 
 intVec<-c(0.01,seq(0.05,0.95,by=0.05),0.99)
 intVec
-#create function to take values for edgeIntensity and return RHI result
+#create function to take values for edgeIntensity and return RHI result. Set
 intFun<-function(x,config,speciesGroup){
   
   intRHI<-rhiConnectHom(patches = config,specialism = speciesGroup,edge = 100,edgeIntensity = x,maxDist = 2600,dispersalRate = 0.05,edgeSensitivity = 1)
